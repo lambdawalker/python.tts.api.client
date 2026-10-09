@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tts-api-client"
+version = "0.1.0"
+description = "Synchronous and asynchronous client for the shared local TTS HTTP API"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["httpx>=0.27,<1", "pydantic>=2.7,<3"]
+classifiers = ["Programming Language :: Python :: 3", "Typing :: Typed", "Topic :: Multimedia :: Sound/Audio :: Speech"]
+
+[project.urls]
+Repository = "https://github.com/lambdawalker/python.tts.api.client"
+Specification = "https://github.com/lambdawalker/design.ai/tree/main/tts"
+
+[dependency-groups]
+dev = ["pytest>=8,<9", "ruff>=0.9", "build>=1.2", "twine>=6"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tts_api_client"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
