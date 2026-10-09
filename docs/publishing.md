@@ -104,6 +104,19 @@ Action versions follow the existing major-tag policy; no unverified SHA pins wer
 
 ## Recovery and confirmation
 
+The **Publish distributions to PyPI** step fails if PyPI rejects the workflow's
+Trusted Publisher identity. A failure-only follow-up prints setup and recovery
+instructions both in the logs and in the Actions job summary, including the exact
+project/owner/repository/workflow/environment values and PyPI settings links.
+The original uploader error is retained; the follow-up does not turn the job green
+or allow confirmation to run. Network errors, duplicate files and other upload
+failures are not automatically labeled as missing registration.
+
+A package-existence check is intentionally not a prerequisite: a correctly configured
+pending publisher can create the project on first upload. For an authentication
+rejection before any upload, correct the publisher settings and rerun failed jobs
+in the original run. For failures after uploading starts, follow reconciliation below.
+
 A GitHub release is not proof of a PyPI publication. Candidate validation happens
 before tag creation. For finalization/upload failures, retain the candidate bundle,
 artifacts and source identity and rerun failed jobs in the ORIGINAL workflow run.

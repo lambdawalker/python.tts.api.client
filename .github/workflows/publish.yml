@@ -154,7 +154,50 @@ jobs:
         with:
           name: tts-api-client-distributions
           path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish distributions to PyPI
+        id: upload
+        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Explain PyPI publishing setup and recovery
+        if: failure() && steps.upload.outcome == 'failure'
+        shell: bash
+        run: |
+          echo '::error title=PyPI publication failed::See the original Publish distributions to PyPI error and the setup/recovery instructions below and in the job summary. For a missing or mismatched Trusted Publisher, configure tts-api-client / lambdawalker / python.tts.api.client / publish.yml / pypi.'
+          cat <<'GUIDANCE' | tee -a "$GITHUB_STEP_SUMMARY"
+          ## PyPI publication failed
+
+          The upload failed; this job remains failed and publication confirmation is blocked.
+          Read the original **Publish distributions to PyPI** error above for the actual cause.
+          These instructions do not classify every upload failure as missing configuration.
+
+          ### If Trusted Publisher authentication was rejected
+
+          The PyPI publisher may be missing or its settings may not match this workflow.
+
+          - **New project:** open https://pypi.org/manage/account/publishing/ and add a pending GitHub publisher.
+          - **Existing project you own:** open https://pypi.org/manage/project/tts-api-client/settings/publishing/ and add or correct its GitHub publisher.
+
+          Use these exact settings:
+
+          | Field | Value |
+          | --- | --- |
+          | PyPI project | `tts-api-client` |
+          | GitHub owner | `lambdawalker` |
+          | Repository | `python.tts.api.client` |
+          | Workflow filename | `publish.yml` |
+          | GitHub environment | `pypi` |
+
+          A pending publisher is valid before the package exists: the first successful upload creates the project.
+          No PyPI API token is needed. Public package existence alone does not prove publishing authorization.
+
+          ### Recovery
+
+          After correcting an authentication rejection that happened before any upload, rerun failed jobs in the original run.
+          If uploads started or the error concerns existing files, compare the original artifacts and release-evidence hashes
+          with PyPI before retrying; do not blindly upload again or reuse a version with different files.
+          Network/service errors require their own diagnosis, not new publisher registration.
+          See https://github.com/lambdawalker/python.tts.api.client/blob/main/docs/publishing.md#recovery-and-confirmation
+          for partial-upload recovery instructions.
+          GUIDANCE
   confirm:
     needs: [release, publish]
     runs-on: ubuntu-latest
