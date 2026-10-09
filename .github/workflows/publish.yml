@@ -3,6 +3,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact release version (X.Y.Z); blank calculates from Conventional Commits'
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -13,24 +19,34 @@ jobs:
     if: github.repository == 'lambdawalker/python.tts.api.client' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     outputs:
-      created: ${{ steps.r.outputs.release_created }}
-      tag: ${{ steps.r.outputs.tag_name }}
-      sha: ${{ steps.r.outputs.sha }}
-      pr: ${{ steps.r.outputs.pr }}
+      created: ${{ steps.prepare.outputs.created }}
+      tag: ${{ steps.prepare.outputs.tag }}
+      sha: ${{ steps.prepare.outputs.sha }}
+      base: ${{ steps.prepare.outputs.base }}
     steps:
-      - uses: googleapis/release-please-action@v4
-        id: r
+      - uses: actions/checkout@v4
         with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - run: uv sync --locked --group dev
+      - name: Prepare local release candidate
+        id: prepare
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: uv run python scripts/prepare_release.py --version "$REQUESTED_VERSION"
+      - uses: actions/upload-artifact@v4
+        if: steps.prepare.outputs.created == 'true'
+        with:
+          name: release-source
+          path: release-candidate.bundle
+          if-no-files-found: error
   validate:
     needs: release
-    if: needs.release.result == 'success'
+    if: needs.release.outputs.created == 'true'
     strategy:
       matrix:
         python: ['3.10', '3.11', '3.12', '3.13']
@@ -39,9 +55,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release.outputs.sha || fromJSON(needs.release.outputs.pr || '{}').headBranchName || github.sha }}
+          ref: ${{ needs.release.outputs.base }}
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-source
+          path: ${{ runner.temp }}/release-source
+      - name: Check out the immutable candidate
+        env:
+          RELEASE_SHA: ${{ needs.release.outputs.sha }}
+        run: |
+          git fetch "$RUNNER_TEMP/release-source/release-candidate.bundle" release-candidate
+          git checkout --detach "$RELEASE_SHA"
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python }}
@@ -51,15 +77,13 @@ jobs:
       - run: uv run python scripts/docs.py build
       - run: uv run python scripts/docs.py check
       - run: uv run python examples/offline.py
-      - name: Resolve and validate immutable release identity
-        if: needs.release.outputs.created == 'true'
+      - name: Validate candidate identity
         env:
-          RELEASE_TAG: ${{ needs.release.outputs.tag }}
           RELEASE_SHA: ${{ needs.release.outputs.sha }}
+          BASE_SHA: ${{ needs.release.outputs.base }}
         run: |
-          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$RELEASE_SHA"
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          test "$(git rev-parse HEAD^)" = "$BASE_SHA"
       - run: bash scripts/check_artifacts.sh
         env:
           RELEASE_TAG: ${{ needs.release.outputs.tag }}
@@ -75,9 +99,46 @@ jobs:
           name: release-evidence
           path: release-evidence.json
           if-no-files-found: error
-  publish:
+  finalize:
     needs: [release, validate]
-    if: needs.validate.result == 'success' && needs.release.outputs.created == 'true' && github.repository == 'lambdawalker/python.tts.api.client' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-source
+          path: ${{ runner.temp }}/release-source
+      - name: Commit version, tag and create release after all checks pass
+        env:
+          RELEASE_SHA: ${{ needs.release.outputs.sha }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+          BASE_SHA: ${{ needs.release.outputs.base }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch "$RUNNER_TEMP/release-source/release-candidate.bundle" release-candidate
+          git checkout --detach "$RELEASE_SHA"
+          test "$(git rev-parse HEAD^)" = "$BASE_SHA"
+          git fetch origin main --tags
+          # Retry only when the previous attempt installed this exact identity.
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$RELEASE_SHA"
+            git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          else
+            test "$(git rev-parse origin/main)" = "$BASE_SHA"
+            git push --atomic origin "$RELEASE_SHA:refs/heads/main" "$RELEASE_SHA:refs/tags/$RELEASE_TAG"
+          fi
+          if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes-file CHANGELOG.md
+          fi
+  publish:
+    needs: [release, validate, finalize]
+    if: needs.finalize.result == 'success' && needs.validate.result == 'success' && needs.release.outputs.created == 'true' && github.repository == 'lambdawalker/python.tts.api.client' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:

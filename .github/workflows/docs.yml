@@ -4,6 +4,9 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_run:
+    workflows: ['Release and publish']
+    types: [completed]
 permissions:
   contents: read
 concurrency:
@@ -11,13 +14,20 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository)
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'workflow_run' && 'main' || github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Record exact documentation source
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.12'
@@ -44,10 +54,12 @@ jobs:
     steps:
       - uses: actions/github-script@v7
         id: current
+        env:
+          BUILT_SHA: ${{ needs.build.outputs.sha }}
         with:
           script: |
             const {data} = await github.rest.repos.getBranch({...context.repo, branch: 'main'});
-            core.setOutput('current', data.commit.sha === context.sha);
+            core.setOutput('current', data.commit.sha === process.env.BUILT_SHA);
       - uses: actions/deploy-pages@v4
         id: deploy
         if: steps.current.outputs.current == 'true'

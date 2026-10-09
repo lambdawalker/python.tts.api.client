@@ -5,8 +5,8 @@ Selecciona una versión del catálogo para sus contratos inmutables; dev describ
 
 Tras publicar, usa instalación y referencia de la versión exacta. Antes de 1.0, los
 cambios incompatibles y las funciones nuevas incrementan la versión menor; las
-correcciones incrementan el parche. Revisa la solicitud de publicación y el registro
-de cambios. No hay traducción automática de entradas ni capa de compatibilidad.
+correcciones incrementan el parche. Revisa el registro de cambios. Las publicaciones son automáticas desde main;
+la ejecución manual permite indicar una versión exacta. No hay traducción automática de entradas ni capa de compatibilidad.
 
 Para cambiar de servidor crea otro cliente, consulta capacidades e instrucciones y
 resuelve nuevos IDs de voces/recursos. Los endpoints comunes no garantizan entradas

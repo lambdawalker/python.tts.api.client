@@ -45,4 +45,7 @@ bash scripts/check_artifacts.sh
 uv run python scripts/docs.py build
 ```
 
+Main-branch changes now release automatically from Conventional Commits. The manual
+**Release and publish** action accepts an optional exact `version` (X.Y.Z).
+
 The owner must select a license and configure PyPI Trusted Publishing before release.

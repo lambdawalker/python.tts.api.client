@@ -8,9 +8,8 @@ remain the build/dependency tools. Runtime dependencies remain HTTPX and Pydanti
 
 PyPI returned HTTP 404 for the proposed name on 2026-10-09. This is not a name
 reservation or proof of ownership. No GitHub releases/tags existed at inspection.
-The source version is 0.1.0, which is the configured first-release target. The empty
-manifest means no prior release, not a fictional 0.0.0 publication. Bootstrap SHA
-`a67b05279f42c4687f862fee7c9efbb293a17c9c` is this repository's initial commit.
+The initial source version is 0.1.0. With no prior release tags, the first automatic
+release uses that existing version; a manual override may choose a higher version.
 
 Choose the package license before publication; none has been invented here. Confirm
 rights to the proposed PyPI name. Create a PyPI account with verified email and 2FA.
@@ -29,44 +28,58 @@ and [existing project guide](https://docs.pypi.org/trusted-publishers/adding-a-p
 | GitHub environment | `pypi` |
 
 Create GitHub environment `pypi` and choose reviewers/ref restrictions. This workflow
-runs on `main` even while checking out a tagged SHA, so allow `main`. Enable Actions
-permission to create pull requests. Release management has contents/issues/PR write;
-validation is read-only; only upload has OIDC. No long-lived PyPI token is required.
-These account/environment settings have NOT been configured or verified by this change.
+runs on `main` even while checking out a release SHA, so allow `main`. Only the
+finalize job needs contents:write to fast-forward the release commit and create the
+tag/release. No PR creation/approval or issues permission is needed. The upload job
+alone has OIDC. No long-lived PyPI token is required. Account settings have NOT been
+configured by this change. Branch rules must allow the workflow to write version
+commits to main; if your policy requires PRs, this direct-release mode will stop.
 
-## Everyday release flow
+## Automatic releases and manual versions
 
-Conventional Commits → Release Please PR → maintainer review/merge → GitHub release
-→ exact-source validation across Python 3.10–3.13 → retained artifacts → PyPI upload
-→ registry hash confirmation and clean exact-version install.
+Push or merge to main → calculate next version → prepare local version/changelog
+commit → validate that exact candidate on Python 3.10–3.13 → atomically fast-forward
+main and add the immutable tag → GitHub release → PyPI upload → confirmation.
+No release pull request, automatic PR approval, or PR merge is involved.
 
-`fix:` increments patch; `feat:` increments minor. With the explicit pre-1.0 policy,
-breaking changes increment minor instead of major. After 1.0, breaking changes
-increment major. Prereleases are not supported by this workflow: versions/tags must
-be stable `X.Y.Z` / `vX.Y.Z`. No automatic merge is enabled. The Python strategy updates
-pyproject; extra-file updaters keep runtime version and the local uv.lock entry aligned.
-The lock updater targets only this project's entry, leaving dependency versions intact.
+`fix:` increments patch; `feat:` increments minor. A Conventional Commit with `!`
+or a `BREAKING CHANGE:` / `BREAKING-CHANGE:` footer increments major after 1.0 and
+minor before 1.0. Multiple commits use the highest required bump. Other commit types
+alone do not release unless marked breaking. The first eligible release uses the
+existing source version. The script updates pyproject, runtime version, the project's
+uv.lock entry and CHANGELOG together; unrelated dependencies are unchanged.
+
+To choose the number: Actions → Release and publish → Run workflow → select main →
+enter `version`, for example `0.3.0`. Leave it blank to calculate from commits. This
+is a production release action, not a dry run. The input accepts stable X.Y.Z without
+v, leading zeros or prerelease suffixes. It must exceed the latest release and must
+not lower the source version. A manual version can release documentation-only changes.
+A reused tag is rejected; this field is not a recovery/overwrite mechanism.
 
 | Event | Behavior |
 | --- | --- |
-| Pull request | ci.yml tests, docs checks and artifact validation; no OIDC or publication. |
-| Push to main | publish.yml reconciles releases, validates the returned release PR candidate or exact release SHA, uploads only when release_created is true. |
-| Manual dispatch on main | Same reconciliation, MAY publish a newly created release; not a dry run. |
-| Published release event | Not subscribed; prevents duplicate paths. Recover with original run. |
-| Fork | CI only; canonical repository checks prevent release management/upload. |
+| Pull request | ci.yml tests/builds; docs.yml validates; no release or upload. |
+| Push to main | Automatic commit-based release when eligible changes exist. |
+| Manual dispatch on main | Automatic calculation or explicit version; may publish. |
+| Release event | Not subscribed; recover using the original run. |
+| Fork or non-main dispatch | Release preparation skipped; no publication. |
 
-GITHUB_TOKEN-created PRs do not normally start a separate PR workflow. The release
-workflow explicitly checks out the returned PR branch and tests it with read-only
-permissions. These checks belong to the workflow's triggering commit, not necessarily
-the PR head, and may not satisfy branch protection. If required PR checks are absent,
-use an owner-managed GitHub App integration that triggers normal PR checks, or a
-maintainer-triggered PR update; do not bypass required checks or assume base-commit
-checks prove the candidate. Verify the candidate SHA in checkout logs before merging.
+Preparation has read-only permissions. The candidate is retained as a git bundle
+and every matrix job checks out its exact SHA. All checks must pass before remote
+refs change or upload starts. Finalization verifies the expected parent and rejects
+an advanced main branch; start a fresh run against current main if another commit
+arrived. It never force-pushes. A repeat finalization accepts only the exact same
+existing tag/source identity. Branch/tag creation is atomic.
 
-Release-created tag and SHA outputs feed dependent jobs directly. Tags are resolved
-to commits and compared with checkout HEAD; main ancestry is verified. A failed
-matrix cell blocks upload. Publication is serialized as `pypi-tts-api-client`, with
-cancellation disabled. Workflow reconciliation is also serialized.
+GITHUB_TOKEN-created version commits do not normally trigger push workflows, so
+all publication jobs are connected in the same run. Documentation separately rebuilds
+on successful completion of Release and publish, checking out current main and
+checking its SHA again before deployment. A site failure cannot republish a package.
+Release reconciliation is serialized and actual upload retains the shared
+`pypi-tts-api-client` lock with cancellation disabled.
+
+Any old Release Please PR/branch can be closed/deleted by the owner; it is no longer
+used. Do not merge an old release PR after switching to this workflow.
 
 ## Local validation / safe rehearsal
 
@@ -91,9 +104,10 @@ Action versions follow the existing major-tag policy; no unverified SHA pins wer
 
 ## Recovery and confirmation
 
-A GitHub release is not proof of a PyPI publication. If validation fails after tag
-creation, keep the tag/source identity and rerun failed jobs in the ORIGINAL workflow
-run. Starting a new reconciliation may return release_created=false and skip upload.
+A GitHub release is not proof of a PyPI publication. Candidate validation happens
+before tag creation. For finalization/upload failures, retain the candidate bundle,
+artifacts and source identity and rerun failed jobs in the ORIGINAL workflow run.
+A new automatic run may find no eligible commits and skip release preparation.
 Do not move tags, change code under an existing version, or delete/reuse public files.
 
 If upload may have partially succeeded, STOP before rerunning the upload job. Download
@@ -125,12 +139,10 @@ latest coordinates use semantic version ordering. Never update availability from
 proposed version. The docs workflow is independently retryable.
 
 Publisher mismatch: compare owner/repository/workflow/environment exactly. Version
-mismatch: review the release PR's pyproject, runtime version and uv.lock. Missing PR
-checks: see bot behavior above. Duplicate filenames: use reconciliation above, not
+mismatch: inspect candidate pyproject, runtime version and uv.lock. A protected-main
+rejection requires an owner decision on direct-release write permissions. Duplicate filenames: use reconciliation above, not
 skip-existing. No TestPyPI workflow is configured because staging was not requested.
 
-Sources: [Release Please](https://github.com/googleapis/release-please-action),
-[configuration](https://github.com/googleapis/release-please/blob/main/docs/customizing.md),
-[PyPA publisher](https://github.com/pypa/gh-action-pypi-publish),
+Sources: [PyPA publisher](https://github.com/pypa/gh-action-pypi-publish),
 [packaging](https://packaging.python.org/en/latest/tutorials/packaging-projects/),
 [workflow event rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
