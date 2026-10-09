@@ -24,8 +24,8 @@
     "translation_sha256": "3d84861772ae8517641ca617df594d0626b61089cfd3cbae77539348174326bc"
   },
   "migration": {
-    "canonical_sha256": "09d17ea39af9bb1ea7bc1593525c22394172402dda4c41ab80584f4f10afe522",
-    "translation_sha256": "0e2966d2ba334b343499bd13a8e9392f5fce70130a0424b9e360e9059ebf3b6c"
+    "canonical_sha256": "1b722b51155a7947d4cf0c9f3f9f6a94461f153a792dd5df55743fcb66dbfb50",
+    "translation_sha256": "cec5432dc6abec01736c66b8492f5f7585c88c82238e0051a14d0980f1bbd71e"
   },
   "quickstart": {
     "canonical_sha256": "3a6e7bdf964961f3fb5b67626c5551c37bd9caf23b8659ac5661fe6ba58791c5",

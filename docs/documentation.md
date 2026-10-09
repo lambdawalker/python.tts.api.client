@@ -73,8 +73,9 @@ verified. Site target: https://lambdawalker.github.io/python.tts.api.client/ .
 Manual docs workflow dispatch on main is documentation-only and cannot upload to PyPI.
 The workflow serializes deployments and checks main HEAD immediately before deployment,
 so a delayed old build is skipped. A documentation failure does not retry package
-upload. After manually archiving confirmed publication facts, a normal main push or
-manual docs dispatch builds the updated catalog; no bot-trigger assumption is needed.
+upload. A successful automatic release explicitly triggers the docs workflow via workflow_run.
+After manually archiving confirmed publication facts, a normal main push or manual
+docs dispatch builds the updated catalog; no bot-trigger assumption is needed.
 
 ## Coverage and screenshots
 

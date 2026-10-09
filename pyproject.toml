@@ -43,7 +43,7 @@ select = ["E", "F", "I"]
 
 [tool.hatch.build.targets.sdist]
 include = ["src/", "tests/", "pyproject.toml", "README.md", "uv.lock"]
-exclude = ["tests/test_tooling.py"]
+exclude = ["tests/test_tooling.py", "tests/test_automatic_release.py"]
 
 [tool.ruff.lint.per-file-ignores]
 # Markdown tables and HTML templates intentionally have long lines.

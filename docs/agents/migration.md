@@ -6,7 +6,8 @@ A GitHub tag or successful build alone is not proof of registry availability.
 
 After publication, use the exact version's installation page and API reference.
 Pre-1.0 breaking changes increment the minor version; features also increment the
-minor version; fixes increment the patch. Review the generated release PR/changelog.
+minor version; fixes increment the patch. Review the release changelog. Releases now run automatically from main; manual
+workflow dispatch can supply an exact version.
 No automatic input translation or compatibility layer is planned.
 
 To change deployments, create a new client, re-read capabilities/guidance and resolve
