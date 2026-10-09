@@ -16,7 +16,16 @@ Repository = "https://github.com/lambdawalker/python.tts.api.client"
 Specification = "https://github.com/lambdawalker/design.ai/tree/main/tts"
 
 [dependency-groups]
-dev = ["pytest>=8,<9", "ruff>=0.9", "build>=1.2", "twine>=6"]
+dev = [
+    "pytest>=8,<9",
+    "ruff>=0.9",
+    "build>=1.2",
+    "twine>=6",
+    "markdown>=3.7,<4",
+    "pygments>=2.18,<3",
+    "tomli>=2 ; python_full_version < '3.11'",
+    "packaging>=24",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tts_api_client"]
@@ -31,3 +40,12 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "tests/", "pyproject.toml", "README.md", "uv.lock"]
+exclude = ["tests/test_tooling.py"]
+
+[tool.ruff.lint.per-file-ignores]
+# Markdown tables and HTML templates intentionally have long lines.
+"scripts/api_docs.py" = ["E501"]
+"scripts/docs.py" = ["E501"]

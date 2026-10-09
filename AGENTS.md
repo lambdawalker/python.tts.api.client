@@ -12,3 +12,8 @@ This repository implements only the Python HTTP client. Architecture authority: 
 - Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, and `uv build` before delivery.
 - Keep README and docs/contracts.md accurate about draft wire assumptions and limitations.
 - PyPI publishing and a license require owner decisions; do not imply this package is released.
+
+Consumer documentation starts at docs/agents/index.md. Publishing setup is documented
+in docs/publishing.md; actual publication requires an explicit release decision.
+Run scripts/docs.py build/check and artifact checks for release/documentation changes.
+Never update translation acceptance hashes in CI; review translations first.

@@ -1,0 +1,120 @@
+name: Release and publish
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-management
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.repository == 'lambdawalker/python.tts.api.client' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      created: ${{ steps.r.outputs.release_created }}
+      tag: ${{ steps.r.outputs.tag_name }}
+      sha: ${{ steps.r.outputs.sha }}
+      pr: ${{ steps.r.outputs.pr }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: r
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+  validate:
+    needs: release
+    if: needs.release.result == 'success'
+    strategy:
+      matrix:
+        python: ['3.10', '3.11', '3.12', '3.13']
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.sha || fromJSON(needs.release.outputs.pr || '{}').headBranchName || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked --group dev
+      - run: uv run pytest
+      - run: uv run ruff check . && uv run ruff format --check .
+      - run: uv run python scripts/docs.py build
+      - run: uv run python scripts/docs.py check
+      - run: uv run python examples/offline.py
+      - name: Resolve and validate immutable release identity
+        if: needs.release.outputs.created == 'true'
+        env:
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+          RELEASE_SHA: ${{ needs.release.outputs.sha }}
+        run: |
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+      - run: bash scripts/check_artifacts.sh
+        env:
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+      - uses: actions/upload-artifact@v4
+        if: matrix.python == '3.12'
+        with:
+          name: tts-api-client-distributions
+          path: dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: matrix.python == '3.12'
+        with:
+          name: release-evidence
+          path: release-evidence.json
+          if-no-files-found: error
+  publish:
+    needs: [release, validate]
+    if: needs.validate.result == 'success' && needs.release.outputs.created == 'true' && github.repository == 'lambdawalker/python.tts.api.client' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: pypi-tts-api-client
+      cancel-in-progress: false
+    environment:
+      name: pypi
+      url: https://pypi.org/p/tts-api-client
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tts-api-client-distributions
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+  confirm:
+    needs: [release, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-evidence
+      - run: uv run --no-project python scripts/release.py confirm
+      - name: Install exact published version outside checkout
+        env:
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          cd "$RUNNER_TEMP"
+          uv venv published-check
+          uv pip install --python published-check/bin/python "tts-api-client==${RELEASE_TAG#v}"
+          published-check/bin/python -I -c 'import tts_api_client; print(tts_api_client.__version__)'

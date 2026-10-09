@@ -1,0 +1,53 @@
+name: Documentation
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: documentation-${{ github.event_name == 'pull_request' && github.ref || 'deployment' }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - run: uv sync --locked --group dev
+      - run: uv run python scripts/api_docs.py && git diff --exit-code -- docs/agents/api.md docs/es/api.md
+      - run: uv run python scripts/docs.py build
+      - run: uv run python scripts/docs.py check
+      - run: uv run python examples/offline.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: sites/dist
+  deploy:
+    needs: build
+    if: github.repository == 'lambdawalker/python.tts.api.client' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/github-script@v7
+        id: current
+        with:
+          script: |
+            const {data} = await github.rest.repos.getBranch({...context.repo, branch: 'main'});
+            core.setOutput('current', data.commit.sha === context.sha);
+      - uses: actions/deploy-pages@v4
+        id: deploy
+        if: steps.current.outputs.current == 'true'

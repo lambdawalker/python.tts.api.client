@@ -6,3 +6,6 @@ __pycache__/
 dist/
 *.egg-info/
 .superpowers/
+
+sites/dist/
+release-evidence.json

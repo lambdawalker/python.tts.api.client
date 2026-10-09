@@ -12,7 +12,8 @@ with TTSClient(os.environ["TTS_BASE_URL"], api_key=os.getenv("TTS_API_KEY")) as 
     text = input("Model-appropriate text: ")
     voice_id = input("Voice ID from the list: ")
     request = {"text": text, "voice": {"id": voice_id}}
-    client.validate_speech(**request)
+    if not client.validate_speech(**request).valid:
+        raise ValueError("Server validation rejected the request; read guidance")
     job = client.generate_speech(**request, idempotency_key=str(uuid4()))
     print("Job:", job.id)
     result = job.wait()
