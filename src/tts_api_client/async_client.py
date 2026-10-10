@@ -21,7 +21,7 @@ from ._common import (
     request_payload,
     segment,
 )
-from .errors import JobTimeoutError, TransportError
+from .errors import JobTimeoutError, ProtocolError, TransportError
 from .jobs import AsyncJob
 from .models import (
     Asset,
@@ -29,6 +29,7 @@ from .models import (
     Guidance,
     JobStatus,
     ModelProfile,
+    Session,
     SpeechRequest,
     ValidationResult,
     Voice,
@@ -44,11 +45,14 @@ class AsyncTTSClient(ClientConfig):
         base_url: str,
         *,
         api_key: str | None = None,
+        anonymous_session: bool = False,
+        session_token: str | None = None,
         timeout: float = 30,
         transport: httpx.AsyncBaseTransport | None = None,
         trust_env: bool = False,
     ):
-        super().__init__(base_url, timeout, api_key)
+        super().__init__(base_url, timeout, api_key, anonymous_session, session_token)
+        self._session_lock = asyncio.Lock()
         self._http = httpx.AsyncClient(
             base_url=self.base_url,
             headers=self._headers,
@@ -68,7 +72,45 @@ class AsyncTTSClient(ClientConfig):
         await self._http.aclose()
         self.clear_cache()
 
+    async def _create_session_unlocked(self) -> Session:
+        if self._api_key is not None:
+            raise ValueError("Cannot create an anonymous session with api_key configured")
+        self._session_mode = True
+        self._session_attempted = True
+        session = parse(Session, decode(await self._send_response("POST", "v1/sessions")))
+        return self._activate_session(session)
+
+    async def create_session(self) -> Session:
+        """Explicitly create a fresh identity. Does not revoke the previous session."""
+        async with self._session_lock:
+            return await self._create_session_unlocked()
+
+    async def _ensure_session(self):
+        if not self._session_mode or self._session_token is not None:
+            return
+        async with self._session_lock:
+            if self._session_token is not None:
+                return
+            if self._session_attempted:
+                raise ProtocolError("No active session; call create_session() explicitly")
+            await self._create_session_unlocked()
+
+    async def revoke_session(self) -> None:
+        """Revoke this credential. Further operations require an explicit new session."""
+        async with self._session_lock:
+            if self._session_token is None:
+                raise ValueError("No session token is configured")
+            check_response(await self._send_response("DELETE", "v1/sessions/current"))
+            self._session_token = None
+            self._session_attempted = True
+            self._http.headers.pop("Authorization", None)
+            self.clear_cache()
+
     async def _response(self, method: str, path: str, **options) -> httpx.Response:
+        await self._ensure_session()
+        return await self._send_response(method, path, **options)
+
+    async def _send_response(self, method: str, path: str, **options) -> httpx.Response:
         try:
             return await self._http.request(method, path, **options)
         except httpx.TransportError as exc:
@@ -210,6 +252,7 @@ class AsyncTTSClient(ClientConfig):
             )
 
     async def download_asset(self, asset_id: str, destination: str | Path) -> Path:
+        await self._ensure_session()
         path = f"v1/assets/{segment(asset_id)}"
         target = Path(destination)
         temp = None
@@ -256,6 +299,7 @@ class AsyncTTSClient(ClientConfig):
         positive(poll_interval, "poll_interval")
         if not isinstance(reconnect_attempts, int) or reconnect_attempts < 0:
             raise ValueError("reconnect_attempts must be a nonnegative integer")
+        await self._ensure_session()
         cursor = after
         last_emitted = after
         failure = None

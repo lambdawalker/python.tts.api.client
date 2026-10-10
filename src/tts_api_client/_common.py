@@ -90,7 +90,22 @@ def positive(value: float, name: str, allow_zero: bool = False) -> None:
 
 
 class ClientConfig:
-    def __init__(self, base_url: str, timeout: float, api_key: str | None):
+    def __init__(
+        self,
+        base_url: str,
+        timeout: float,
+        api_key: str | None,
+        anonymous_session: bool = False,
+        session_token: str | None = None,
+    ):
+        if api_key is not None and (anonymous_session or session_token is not None):
+            raise ValueError("api_key cannot be combined with anonymous sessions")
+        if session_token is not None and not re.fullmatch(r"[A-Za-z0-9_-]+", session_token):
+            raise ValueError("session_token must be a nonempty opaque token")
+        self._api_key = api_key
+        self._session_mode = anonymous_session or session_token is not None
+        self._session_token = session_token
+        self._session_attempted = session_token is not None
         url = httpx.URL(base_url)
         if url.scheme not in {"http", "https"} or not url.host:
             raise ValueError("base_url must be an absolute HTTP(S) URL")
@@ -102,9 +117,23 @@ class ClientConfig:
         self._base_url = str(url).rstrip("/") + "/"
         self._timeout = timeout
         self._headers = {"User-Agent": "tts-api-client/0.1.0"}
-        if api_key is not None:
-            self._headers["Authorization"] = f"Bearer {api_key}"
+        credential = session_token if session_token is not None else api_key
+        if credential is not None:
+            self._headers["Authorization"] = f"Bearer {credential}"
         self._cache: dict[tuple[str, str | None], tuple[str, Any]] = {}
+
+    @property
+    def session_token(self) -> str | None:
+        """Save privately to resume this identity; close does not revoke it."""
+        return self._session_token
+
+    def _activate_session(self, session):
+        self._session_mode = True
+        self._http.headers["Authorization"] = f"Bearer {session.access_token}"
+        self.clear_cache()
+        # Publish readiness only after credentials are installed for concurrent callers.
+        self._session_token = session.access_token
+        return session
 
     @property
     def base_url(self) -> str:

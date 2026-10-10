@@ -146,3 +146,10 @@ class Event(Response):
     event: str = "message"
     data: Any = None
     source: Literal["sse", "poll"] = "sse"
+
+
+class Session(Response):
+    session_id: str
+    access_token: str = Field(min_length=1, repr=False, pattern=r"^[A-Za-z0-9_-]+$")
+    token_type: Literal["Bearer"] = "Bearer"
+    expires_at: str

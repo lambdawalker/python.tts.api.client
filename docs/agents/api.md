@@ -13,6 +13,14 @@ Clients accept a deployment root, optional Bearer `api_key`, positive inactivity
 `clear_cache()` returns None. Sync context exit calls `close`; async exit calls
 `aclose`. See [concepts](concepts.md) for lifetime, thread and cancellation rules.
 
+Anonymous sessions: `anonymous_session=True` lazily obtains a token before the first
+operation. `session_token="..."` resumes a saved token; both are incompatible with
+`api_key`. Read `client.session_token` to save it privately. `create_session()` creates
+and activates a fresh identity; `revoke_session()` revokes it. Closing does not revoke.
+401 never triggers automatic replacement. After a failed first creation, explicitly call
+`create_session()` to retry; the server may have accepted the first request. Lifecycle
+changes must not run concurrently with other operations on the same client.
+
 | Methods | Parameters, result and effect |
 | --- | --- |
 | `list_models`, `capabilities`, `guidance` | Read profile lists/metadata. Optional model filters select a profile; guidance requires a feature path ID. |
@@ -54,11 +62,15 @@ class TTSClient(ClientConfig):
         base_url: str,
         *,
         api_key: str | None = None,
+        anonymous_session: bool = False,
+        session_token: str | None = None,
         timeout: float = 30,
         transport: httpx.BaseTransport | None = None,
         trust_env: bool = False,
     ): ...
     def close(self) -> None: ...
+    def create_session(self) -> Session: ...
+    def revoke_session(self) -> None: ...
     def list_models(self) -> list[ModelProfile]: ...
     def capabilities(self, model: str | None = None) -> Capabilities: ...
     def guidance(self, feature: str, model: str | None = None) -> Guidance: ...
@@ -116,11 +128,15 @@ class AsyncTTSClient(ClientConfig):
         base_url: str,
         *,
         api_key: str | None = None,
+        anonymous_session: bool = False,
+        session_token: str | None = None,
         timeout: float = 30,
         transport: httpx.AsyncBaseTransport | None = None,
         trust_env: bool = False,
     ): ...
     async def aclose(self) -> None: ...
+    async def create_session(self) -> Session: ...
+    async def revoke_session(self) -> None: ...
     async def list_models(self) -> list[ModelProfile]: ...
     async def capabilities(self, model: str | None = None) -> Capabilities: ...
     async def guidance(self, feature: str, model: str | None = None) -> Guidance: ...
@@ -437,6 +453,20 @@ class Event(Response):
     event: str = "message"
     data: Any = None
     source: Literal["sse", "poll"] = "sse"
+```
+
+## Session
+
+`from tts_api_client import Session`
+
+[Source](../../src/tts_api_client/models.py)
+
+```python
+class Session(Response):
+    session_id: str
+    access_token: str = Field(min_length=1, repr=False, pattern="^[A-Za-z0-9_-]+$")
+    token_type: Literal["Bearer"] = "Bearer"
+    expires_at: str
 ```
 
 ## TTSError

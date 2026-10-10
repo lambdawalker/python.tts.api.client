@@ -13,6 +13,15 @@ positivo, transporte HTTPX opcional y `trust_env=False`. `base_url` es de solo l
 `clear_cache()` devuelve None. Los contextos llaman a `close` o `aclose` al salir.
 Consulta [conceptos](concepts.md) para propiedad, hilos y cancelación.
 
+Sesiones anónimas: `anonymous_session=True` obtiene un token antes de la primera
+operación. `session_token="..."` reutiliza un token guardado; ambas opciones son
+incompatibles con `api_key`. Lee `client.session_token` para guardarlo de forma privada.
+`create_session()` crea y activa una identidad nueva; `revoke_session()` la revoca.
+Cerrar el cliente no revoca la sesión. Un 401 nunca provoca una sustitución automática.
+Si falla la primera creación, llama explícitamente a `create_session()` para reintentar;
+el servidor pudo aceptar la primera solicitud. No cambies el ciclo de vida de la sesión
+mientras otras operaciones del mismo cliente están en curso.
+
 | Métodos | Parámetros, resultado y efecto |
 | --- | --- |
 | `list_models`, `capabilities`, `guidance` | Consultan perfiles/metadatos. model filtra; guidance exige el ID de función. |
@@ -53,11 +62,15 @@ class TTSClient(ClientConfig):
         base_url: str,
         *,
         api_key: str | None = None,
+        anonymous_session: bool = False,
+        session_token: str | None = None,
         timeout: float = 30,
         transport: httpx.BaseTransport | None = None,
         trust_env: bool = False,
     ): ...
     def close(self) -> None: ...
+    def create_session(self) -> Session: ...
+    def revoke_session(self) -> None: ...
     def list_models(self) -> list[ModelProfile]: ...
     def capabilities(self, model: str | None = None) -> Capabilities: ...
     def guidance(self, feature: str, model: str | None = None) -> Guidance: ...
@@ -115,11 +128,15 @@ class AsyncTTSClient(ClientConfig):
         base_url: str,
         *,
         api_key: str | None = None,
+        anonymous_session: bool = False,
+        session_token: str | None = None,
         timeout: float = 30,
         transport: httpx.AsyncBaseTransport | None = None,
         trust_env: bool = False,
     ): ...
     async def aclose(self) -> None: ...
+    async def create_session(self) -> Session: ...
+    async def revoke_session(self) -> None: ...
     async def list_models(self) -> list[ModelProfile]: ...
     async def capabilities(self, model: str | None = None) -> Capabilities: ...
     async def guidance(self, feature: str, model: str | None = None) -> Guidance: ...
@@ -436,6 +453,20 @@ class Event(Response):
     event: str = "message"
     data: Any = None
     source: Literal["sse", "poll"] = "sse"
+```
+
+## Session
+
+`from tts_api_client import Session`
+
+[Source](../../src/tts_api_client/models.py)
+
+```python
+class Session(Response):
+    session_id: str
+    access_token: str = Field(min_length=1, repr=False, pattern="^[A-Za-z0-9_-]+$")
+    token_type: Literal["Bearer"] = "Bearer"
+    expires_at: str
 ```
 
 ## TTSError

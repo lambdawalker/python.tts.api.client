@@ -3,6 +3,7 @@
 import mimetypes
 import os
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,7 @@ from ._common import (
     request_payload,
     segment,
 )
-from .errors import JobTimeoutError, TransportError
+from .errors import JobTimeoutError, ProtocolError, TransportError
 from .jobs import Job
 from .models import (
     Asset,
@@ -28,6 +29,7 @@ from .models import (
     Guidance,
     JobStatus,
     ModelProfile,
+    Session,
     SpeechRequest,
     ValidationResult,
     Voice,
@@ -43,11 +45,14 @@ class TTSClient(ClientConfig):
         base_url: str,
         *,
         api_key: str | None = None,
+        anonymous_session: bool = False,
+        session_token: str | None = None,
         timeout: float = 30,
         transport: httpx.BaseTransport | None = None,
         trust_env: bool = False,
     ):
-        super().__init__(base_url, timeout, api_key)
+        super().__init__(base_url, timeout, api_key, anonymous_session, session_token)
+        self._session_lock = threading.Lock()
         self._http = httpx.Client(
             base_url=self.base_url,
             headers=self._headers,
@@ -67,7 +72,45 @@ class TTSClient(ClientConfig):
         self._http.close()
         self.clear_cache()
 
+    def _create_session_unlocked(self) -> Session:
+        if self._api_key is not None:
+            raise ValueError("Cannot create an anonymous session with api_key configured")
+        self._session_mode = True
+        self._session_attempted = True
+        session = parse(Session, decode(self._send_response("POST", "v1/sessions")))
+        return self._activate_session(session)
+
+    def create_session(self) -> Session:
+        """Explicitly create a fresh identity. Does not revoke the previous session."""
+        with self._session_lock:
+            return self._create_session_unlocked()
+
+    def _ensure_session(self):
+        if not self._session_mode or self._session_token is not None:
+            return
+        with self._session_lock:
+            if self._session_token is not None:
+                return
+            if self._session_attempted:
+                raise ProtocolError("No active session; call create_session() explicitly")
+            self._create_session_unlocked()
+
+    def revoke_session(self) -> None:
+        """Revoke this credential. Further operations require an explicit new session."""
+        with self._session_lock:
+            if self._session_token is None:
+                raise ValueError("No session token is configured")
+            check_response(self._send_response("DELETE", "v1/sessions/current"))
+            self._session_token = None
+            self._session_attempted = True
+            self._http.headers.pop("Authorization", None)
+            self.clear_cache()
+
     def _response(self, method: str, path: str, **options) -> httpx.Response:
+        self._ensure_session()
+        return self._send_response(method, path, **options)
+
+    def _send_response(self, method: str, path: str, **options) -> httpx.Response:
         try:
             return self._http.request(method, path, **options)
         except httpx.TransportError as exc:
@@ -200,6 +243,7 @@ class TTSClient(ClientConfig):
             )
 
     def download_asset(self, asset_id: str, destination: str | Path) -> Path:
+        self._ensure_session()
         path = f"v1/assets/{segment(asset_id)}"
         target = Path(destination)
         temp = None
@@ -246,6 +290,7 @@ class TTSClient(ClientConfig):
         positive(poll_interval, "poll_interval")
         if not isinstance(reconnect_attempts, int) or reconnect_attempts < 0:
             raise ValueError("reconnect_attempts must be a nonnegative integer")
+        self._ensure_session()
         cursor = after
         last_emitted = after
         failure = None
