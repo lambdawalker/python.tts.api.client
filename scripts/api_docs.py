@@ -66,6 +66,14 @@ Clients accept a deployment root, optional Bearer `api_key`, positive inactivity
 `clear_cache()` returns None. Sync context exit calls `close`; async exit calls
 `aclose`. See [concepts](concepts.md) for lifetime, thread and cancellation rules.
 
+Anonymous sessions: `anonymous_session=True` lazily obtains a token before the first
+operation. `session_token="..."` resumes a saved token; both are incompatible with
+`api_key`. Read `client.session_token` to save it privately. `create_session()` creates
+and activates a fresh identity; `revoke_session()` revokes it. Closing does not revoke.
+401 never triggers automatic replacement. After a failed first creation, explicitly call
+`create_session()` to retry; the server may have accepted the first request. Lifecycle
+changes must not run concurrently with other operations on the same client.
+
 | Methods | Parameters, result and effect |
 | --- | --- |
 | `list_models`, `capabilities`, `guidance` | Read profile lists/metadata. Optional model filters select a profile; guidance requires a feature path ID. |
@@ -105,6 +113,15 @@ Los clientes reciben raíz del servidor, `api_key` Bearer opcional, `timeout=30`
 positivo, transporte HTTPX opcional y `trust_env=False`. `base_url` es de solo lectura;
 `clear_cache()` devuelve None. Los contextos llaman a `close` o `aclose` al salir.
 Consulta [conceptos](concepts.md) para propiedad, hilos y cancelación.
+
+Sesiones anónimas: `anonymous_session=True` obtiene un token antes de la primera
+operación. `session_token="..."` reutiliza un token guardado; ambas opciones son
+incompatibles con `api_key`. Lee `client.session_token` para guardarlo de forma privada.
+`create_session()` crea y activa una identidad nueva; `revoke_session()` la revoca.
+Cerrar el cliente no revoca la sesión. Un 401 nunca provoca una sustitución automática.
+Si falla la primera creación, llama explícitamente a `create_session()` para reintentar;
+el servidor pudo aceptar la primera solicitud. No cambies el ciclo de vida de la sesión
+mientras otras operaciones del mismo cliente están en curso.
 
 | Métodos | Parámetros, resultado y efecto |
 | --- | --- |

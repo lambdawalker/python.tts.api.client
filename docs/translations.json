@@ -1,7 +1,7 @@
 {
   "api": {
-    "canonical_sha256": "d862a85cf663ebf0af1d1c9cffe0a9fd6a1ea1568557d465b2f4f7b612ab2aab",
-    "translation_sha256": "20df4477cce71227ecb0ba5d4e5875e7ea3b90002d2929a50e9db8aeacfa98ea"
+    "canonical_sha256": "8ad055b820fa7477c02e9fc9fb7d1288c46f2417144979d37479b4f0f73c6ddd",
+    "translation_sha256": "5488c4cf391bc9b49ed3c7eca97715284b4007a629db72c46194ad4659f0aa4a"
   },
   "concepts": {
     "canonical_sha256": "2b0b0772264824b735ef2d1fc02992bd14ee36363991ad4b1c79472022ef6c06",

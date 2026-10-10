@@ -49,3 +49,12 @@ No generation retry, automatic cancellation, tag stripping, instruction repair, 
 ## Validation evidence
 
 The suite covers synchronous/asynchronous operations, HTTP errors and malformed responses, input preservation, discovery revalidation, job outcomes, retry safety, SSE reconnection/replay/fallback, multipart uploads, atomic interrupted downloads, and real loopback HTTP round trips. Tests do not prove GPU inference or live compatibility with a deployed unified server.
+
+## Anonymous sessions
+
+`POST /v1/sessions` without credentials returns 201 with `session_id`, `access_token`,
+`token_type: "Bearer"` and `expires_at`. `DELETE /v1/sessions/current` revokes the bearer
+credential and returns 204. Both responses use no-store. The server must be configured
+for anonymous sessions. Session IDs are not credentials. Sync/async clients opt in via
+`anonymous_session=True` or resume through `session_token`. Access to jobs, events,
+cancellation, voices and assets is session-scoped. No automatic credential renewal occurs.

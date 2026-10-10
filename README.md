@@ -49,3 +49,22 @@ Main-branch changes now release automatically from Conventional Commits. The man
 **Release and publish** action accepts an optional exact `version` (X.Y.Z).
 
 The owner must select a license and configure PyPI Trusted Publishing before release.
+
+## Anonymous sessions
+
+For a server launched with `--anonymous-sessions`:
+
+```python
+with TTSClient("http://spark:8000", anonymous_session=True) as client:
+    models = client.list_models()  # Creates one session automatically.
+    token = client.session_token  # Save privately if you need to reconnect later.
+
+with TTSClient("http://spark:8000", session_token=token) as client:
+    models = client.list_models()  # Reuses the same identity.
+```
+
+`AsyncTTSClient` offers the same options and async `create_session()` / `revoke_session()`.
+Closing a client leaves its session alive. Expired/revoked credentials return 401;
+the client never silently creates a replacement. New sessions cannot access old jobs.
+The server controls expiration (24 hours by default). `api_key` remains available for
+configured-token deployments; existing token-free servers need neither option.
